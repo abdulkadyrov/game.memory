@@ -9,6 +9,8 @@
     timerTickMs: 100,
   };
 
+  const APP_VERSION = buildAppVersion();
+
   const STORAGE_KEYS = {
     progress: "memory-lane-html-progress",
     settings: "memory-lane-html-settings",
@@ -407,9 +409,11 @@
       seed: setup.seed,
       mode: mode,
       categoryId: categoryId,
+      cycleCategoryId: setup.cycleCategoryId || categoryId,
       levelId: mode === "levels" ? levelId || 1 : undefined,
       roundConfig: setup.roundConfig,
       sequence: setup.sequence,
+      sequenceMeta: setup.sequenceMeta || [],
       sequenceHash: setup.sequenceHash,
       answerOptions: setup.answerOptions,
       phase: "preview",
@@ -436,6 +440,10 @@
   }
 
   function buildGameSetup(input) {
+    if (input.mode === "endless") {
+      return buildEndlessSetup(input.categoryId);
+    }
+
     const roundConfig = buildRoundConfig(input.mode, input.levelId, input.endlessBlockIndex || 0);
     const generated = createRoundSequence({
       categoryId: input.categoryId,
@@ -446,6 +454,7 @@
     return {
       seed: generated.seed,
       sequence: generated.sequence,
+      sequenceMeta: generated.sequenceMeta,
       sequenceHash: generated.sequenceHash,
       answerOptions: generated.answerOptions,
       roundConfig: roundConfig,
@@ -483,7 +492,10 @@
   function createRoundSequence(input) {
     const seed = Date.now() + Math.floor(Math.random() * 100000);
     const rng = mulberry32(seed);
-    const pool = buildPool(input.categoryId, input.roundConfig.similarityTier);
+    const poolEntries = buildPoolEntries(input.categoryId, input.roundConfig.similarityTier);
+    const pool = poolEntries.map(function (entry) {
+      return entry.value;
+    });
 
     let attempts = 0;
     let sequence = buildUniqueSequence(pool, input.roundConfig.sequenceLength, rng);
@@ -509,19 +521,83 @@
     return {
       seed: seed,
       sequence: sequence,
+      sequenceMeta: sequence.map(function (value) {
+        return {
+          value: value,
+          categoryId: input.categoryId === "mixed" ? findValueCategoryId(value) : input.categoryId,
+        };
+      }),
       sequenceHash: hash,
       answerOptions: answerOptions,
     };
   }
 
-  function buildPool(categoryId, similarityTier) {
+  function buildEndlessSetup(categoryId) {
+    const seed = Date.now() + Math.floor(Math.random() * 100000);
+    const rng = mulberry32(seed);
+    const categories = getEndlessCategoryCycle(categoryId);
+    let entries = [];
+
+    categories.forEach(function (entryCategoryId) {
+      const items = shuffle(
+        getCategoryPool(entryCategoryId).map(function (emoji) {
+          return {
+            value: emoji.value,
+            categoryId: entryCategoryId,
+          };
+        }),
+        rng,
+      );
+      entries = entries.concat(items);
+    });
+
+    if (categoryId === "mixed") {
+      entries = shuffle(entries, rng);
+    }
+
+    return {
+      seed: seed,
+      cycleCategoryId: categoryId,
+      sequence: entries.map(function (entry) {
+        return entry.value;
+      }),
+      sequenceMeta: entries,
+      sequenceHash: hashSequence(
+        entries.map(function (entry) {
+          return entry.value;
+        }),
+      ),
+      answerOptions: [],
+      roundConfig: {
+        sequenceLength: entries.length,
+        previewWindow: 3,
+        optionCount: 8,
+        previewDurationMs: 2200,
+        newItemRevealMs: 1050,
+        answerTimeLimitMs: undefined,
+        similarityTier: 3,
+        lives: APP_CONFIG.defaultLives,
+      },
+    };
+  }
+
+  function buildPoolEntries(categoryId, similarityTier) {
     return getCategoryPool(categoryId)
       .filter(function (entry) {
         return entry.similarityTier <= similarityTier;
       })
       .map(function (entry) {
-        return entry.value;
+        return {
+          value: entry.value,
+          categoryId: findValueCategoryId(entry.value),
+        };
       });
+  }
+
+  function buildPool(categoryId, similarityTier) {
+    return buildPoolEntries(categoryId, similarityTier).map(function (entry) {
+      return entry.value;
+    });
   }
 
   function buildUniqueSequence(pool, length, rng) {
@@ -741,19 +817,19 @@
       return;
     }
 
-    const nextCategoryId = getNextEndlessCategory(state.game.categoryId);
-
     const nextSetup = buildGameSetup({
       mode: "endless",
-      categoryId: nextCategoryId,
+      categoryId: state.game.cycleCategoryId || state.game.categoryId,
       recentHashes: state.progress.progress.recentSequenceHashes,
       endlessBlockIndex: state.game.blocksCleared,
     });
 
     state.game.seed = nextSetup.seed;
-    state.game.categoryId = nextCategoryId;
+    state.game.categoryId = nextSetup.cycleCategoryId || state.game.categoryId;
+    state.game.cycleCategoryId = nextSetup.cycleCategoryId || state.game.categoryId;
     state.game.roundConfig = nextSetup.roundConfig;
     state.game.sequence = nextSetup.sequence;
+    state.game.sequenceMeta = nextSetup.sequenceMeta || [];
     state.game.sequenceHash = nextSetup.sequenceHash;
     state.game.answerOptions = nextSetup.answerOptions;
     state.game.phase = "preview";
@@ -1113,6 +1189,9 @@
           "preferDarkTheme",
           state.settings.preferDarkTheme,
         ) +
+        '<div class="setting-row"><div><h3 class="card__title" style="font-size:20px;">Версия приложения</h3><p class="card__text">Обновляется по дате последнего изменения файлов приложения.</p></div><div class="toggle"><strong>' +
+        APP_VERSION +
+        "</strong></div></div>" +
         '</div></div><div class="page-actions">' +
         button("Сбросить прогресс", "danger", { action: "reset-progress" }) +
         "</div>",
@@ -1131,8 +1210,12 @@
     const prompt = getPrompt();
     const showTimer = state.game.phase === "ask" && Boolean(state.game.roundConfig.answerTimeLimitMs);
     const remainingSeconds = Math.ceil((state.game.remainingMs || 0) / 1000);
+    const currentQuestionCategoryId = getCurrentQuestionCategoryId();
     const options = unique(
-      getCategoryPool(state.game.categoryId).map(function (entry) {
+      (state.game.mode === "endless" && state.game.cycleCategoryId === "mixed"
+        ? getCategoryPool("mixed")
+        : getCategoryPool(currentQuestionCategoryId)
+      ).map(function (entry) {
         return entry.value;
       }),
     );
@@ -1169,12 +1252,12 @@
           '<div class="status-bar"><div><div class="card__eyebrow">Подсказка</div><h3 class="card__title">' +
           prompt.title +
           '</h3></div><div class="tiny">' +
-          getCategoryDefinition(state.game.categoryId).title +
+          getCategoryDefinition(currentQuestionCategoryId).title +
           "</div></div>" +
           '<div class="lane__track">' +
-          state.game.sequence
+          getLaneWindowEntries()
             .map(function (item, index) {
-              return renderLaneCell(item, index);
+              return renderLaneCell(item.value, item.index);
             })
             .join("") +
           "</div>" +
@@ -1354,12 +1437,25 @@
   }
 
   function renderLaneCell(item, index) {
-    const initialPreviewVisible = index < state.game.roundConfig.previewWindow;
+    const initialPreviewVisible =
+      state.game.mode === "endless"
+        ? true
+        : index < state.game.roundConfig.previewWindow;
     const isPreview =
       (state.game.phase === "preview" || state.game.phase === "preview-ready") &&
       initialPreviewVisible;
     const isResolved = state.game.resolvedIndexes.includes(index);
-    const isVisible = isResolved || isPreview;
+    const isRevealPhase =
+      state.game.phase === "reveal" || state.game.phase === "reveal-ready";
+    const isRevealTarget = state.game.currentRevealIndex === index && isRevealPhase;
+    const isEndlessHidden =
+      state.game.mode === "endless" &&
+      !isPreview &&
+      index >= state.game.currentQuestionIndex &&
+      index < state.game.currentQuestionIndex + state.game.roundConfig.previewWindow &&
+      !isRevealTarget &&
+      !isResolved;
+    const isVisible = (isResolved || isPreview || isRevealTarget || state.game.mode === "endless") && !isEndlessHidden;
     const isActiveQuestion = index === state.game.currentQuestionIndex && state.game.phase === "ask";
     const isFailedAnswer =
       index === state.game.currentQuestionIndex &&
@@ -1376,13 +1472,19 @@
     if (isFailedAnswer) {
       classes.push("is-failed");
     }
+    if (isRevealTarget) {
+      classes.push("is-reveal-target");
+    }
 
     return (
       '<div class="' +
       classes.join(" ") +
       '">' +
       (isVisible || isFailedAnswer
-        ? '<div class="lane-cell__emoji">' + item + "</div>"
+        ? '<div class="lane-cell__emoji">' +
+          item +
+          "</div>" +
+          (isRevealTarget ? '<div class="lane-cell__marker">🥛</div>' : "")
         : '<div class="lane-cell__cover">?</div>') +
       "</div>"
     );
@@ -1403,7 +1505,10 @@
     if (state.game.phase === "preview-ready") {
       return {
         title: "Готовы начать ход?",
-        body: "Нажмите «Готов», и стартовые смайлики закроются. После этого нужно будет угадать первый скрытый смайлик.",
+        body:
+          state.game.mode === "endless"
+            ? "Нажмите «Готов». После этого в центре останутся 3 скрытых смайлика, и дорожка начнёт скользить влево после каждого правильного ответа."
+            : "Нажмите «Готов», и стартовые смайлики закроются. После этого нужно будет угадать первый скрытый смайлик.",
         badge: "Готов",
       };
     }
@@ -1469,6 +1574,82 @@
     }
 
     return endlessCategories[(currentIndex + 1) % endlessCategories.length];
+  }
+
+  function getEndlessCategoryCycle(startCategoryId) {
+    const baseCategories = CATEGORY_DEFINITIONS.filter(function (category) {
+      return category.id !== "mixed";
+    }).map(function (category) {
+      return category.id;
+    });
+
+    if (startCategoryId === "mixed") {
+      return baseCategories;
+    }
+
+    const startIndex = baseCategories.indexOf(startCategoryId);
+    if (startIndex === -1) {
+      return baseCategories;
+    }
+
+    return baseCategories.slice(startIndex).concat(baseCategories.slice(0, startIndex));
+  }
+
+  function getCurrentQuestionCategoryId() {
+    if (!state.game) {
+      return state.selectedCategory;
+    }
+
+    const meta = state.game.sequenceMeta[state.game.currentQuestionIndex];
+    return meta ? meta.categoryId : state.game.categoryId;
+  }
+
+  function getLaneWindowEntries() {
+    if (!state.game) {
+      return [];
+    }
+
+    if (state.game.mode !== "endless") {
+      return state.game.sequence.map(function (value, index) {
+        return { value: value, index: index };
+      });
+    }
+
+    const viewportSize = 10;
+    const maxStart = Math.max(0, state.game.sequence.length - viewportSize);
+    const start = Math.min(maxStart, Math.max(0, state.game.currentQuestionIndex - 3));
+    const end = Math.min(state.game.sequence.length, start + viewportSize);
+    const items = [];
+
+    for (let index = start; index < end; index += 1) {
+      items.push({
+        value: state.game.sequence[index],
+        index: index,
+      });
+    }
+
+    return items;
+  }
+
+  function findValueCategoryId(value) {
+    const found = CATEGORY_DEFINITIONS.find(function (category) {
+      return category.id !== "mixed" &&
+        category.emoji.some(function (entry) {
+          return entry.value === value;
+        });
+    });
+
+    return found ? found.id : "mixed";
+  }
+
+  function buildAppVersion() {
+    const stamp = new Date(document.lastModified || Date.now());
+    const yyyy = String(stamp.getUTCFullYear());
+    const mm = String(stamp.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(stamp.getUTCDate()).padStart(2, "0");
+    const hh = String(stamp.getUTCHours()).padStart(2, "0");
+    const min = String(stamp.getUTCMinutes()).padStart(2, "0");
+    return "web-" + yyyy + "." + mm + "." + dd + "-" + hh + min;
   }
 
   function getCategoryDefinition(categoryId) {
