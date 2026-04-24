@@ -300,6 +300,9 @@
           startGame(state.game.mode, state.game.categoryId, state.game.levelId);
         }
         break;
+      case "continue-level":
+        startNextLevel();
+        break;
       case "toggle-setting":
         toggleSetting(target.dataset.setting);
         break;
@@ -356,6 +359,27 @@
     };
     saveToStorage(STORAGE_KEYS.progress, state.progress);
     render();
+  }
+
+  function startNextLevel() {
+    if (!state.result || state.result.mode !== "levels") {
+      return;
+    }
+
+    const nextLevel = Math.min(
+      LEVEL_DEFINITIONS.length,
+      Math.max(1, (state.result.levelId || 1) + 1),
+    );
+
+    if (nextLevel > state.progress.progress.unlockedLevel) {
+      navigate("levels");
+      return;
+    }
+
+    state.selectedMode = "levels";
+    state.selectedCategory = state.result.categoryId;
+    state.selectedLevel = nextLevel;
+    startGame("levels", state.result.categoryId, nextLevel);
   }
 
   function startGame(mode, categoryId, levelId) {
@@ -1187,6 +1211,11 @@
       );
     }
 
+    const hasNextLevel =
+      state.result.mode === "levels" &&
+      (state.result.levelId || 1) < LEVEL_DEFINITIONS.length &&
+      (state.result.levelId || 1) + 1 <= state.progress.progress.unlockedLevel;
+
     return renderSection(
       state.result.outcome === "level-complete" ? "Уровень пройден" : "Забег завершён",
       state.result.mode === "levels"
@@ -1203,6 +1232,9 @@
         tile("Категория", getCategoryDefinition(state.result.categoryId).title) +
         "</div>" +
         '<div class="result-actions">' +
+        (hasNextLevel
+          ? button("Следующий уровень", "primary", { action: "continue-level" })
+          : "") +
         button("Сыграть снова", "primary", { action: "restart-game" }) +
         button("Домой", "secondary", { action: "navigate", route: "home" }) +
         button("Прогресс", "ghost", { action: "navigate", route: "progress" }) +
