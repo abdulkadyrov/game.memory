@@ -290,6 +290,9 @@
         }
         submitAnswer(target.dataset.value || "");
         break;
+      case "confirm-phase":
+        handleConfirmPhase();
+        break;
       case "restart-game":
         if (state.result) {
           startGame(state.result.mode, state.result.categoryId, state.result.levelId);
@@ -391,6 +394,7 @@
       livesLeft: setup.roundConfig.lives,
       currentQuestionIndex: 0,
       currentRevealIndex: null,
+      pendingRevealValue: null,
       resolvedIndexes: [],
       highlightedOption: null,
       lastAnswerCorrect: null,
@@ -403,7 +407,7 @@
     registerRun(categoryId);
     rememberSequence(setup.sequenceHash);
     navigate("game");
-    enterPhase("preview");
+    enterPhase("preview-ready");
   }
 
   function buildGameSetup(input) {
@@ -516,20 +520,15 @@
     state.game.askStartedAt = phase === "ask" ? Date.now() : null;
     state.game.remainingMs = state.game.roundConfig.answerTimeLimitMs || 0;
 
-    if (phase === "preview") {
-      timers.phase = window.setTimeout(function () {
-        enterPhase("cover");
-      }, state.game.roundConfig.previewDurationMs);
-    } else if (phase === "cover") {
-      const delay =
-        state.game.currentRevealIndex !== null
-          ? state.game.roundConfig.newItemRevealMs
-          : APP_CONFIG.coverDelayMs;
-      timers.phase = window.setTimeout(function () {
-        enterPhase("ask");
-      }, delay);
+    if (phase === "preview" || phase === "preview-ready") {
+      state.game.currentRevealIndex = null;
+      state.game.pendingRevealValue = null;
     } else if (phase === "ask") {
+      state.game.currentRevealIndex = null;
+      state.game.pendingRevealValue = null;
       startQuestionClock();
+    } else if (phase === "reveal" || phase === "reveal-ready") {
+      // Wait for the player to confirm they memorized the newly revealed emoji.
     } else if (phase === "answer-correct") {
       timers.phase = window.setTimeout(function () {
         advanceAfterCorrect();
@@ -575,6 +574,21 @@
     }
 
     render();
+  }
+
+  function handleConfirmPhase() {
+    if (!state.game) {
+      return;
+    }
+
+    if (state.game.phase === "preview-ready") {
+      enterPhase("ask");
+      return;
+    }
+
+    if (state.game.phase === "reveal-ready") {
+      enterPhase("ask");
+    }
   }
 
   function startQuestionClock() {
@@ -654,7 +668,6 @@
     state.game.currentQuestionIndex = completed
       ? state.game.currentQuestionIndex
       : nextQuestionIndex;
-    state.game.currentRevealIndex = nextRevealIndex;
     state.game.highlightedOption = null;
 
     if (completed) {
@@ -664,7 +677,16 @@
       return;
     }
 
-    enterPhase("cover");
+    if (nextRevealIndex !== null) {
+      state.game.currentRevealIndex = nextRevealIndex;
+      state.game.pendingRevealValue = state.game.sequence[nextRevealIndex];
+      enterPhase("reveal-ready");
+      return;
+    }
+
+    state.game.currentRevealIndex = null;
+    state.game.pendingRevealValue = null;
+    enterPhase("ask");
   }
 
   function consumeLifeAfterWrong() {
@@ -704,6 +726,7 @@
     state.game.bestScore = Math.max(state.game.bestScore, state.game.score);
     state.game.currentQuestionIndex = 0;
     state.game.currentRevealIndex = null;
+    state.game.pendingRevealValue = null;
     state.game.resolvedIndexes = [];
     state.game.highlightedOption = null;
     state.game.lastAnswerCorrect = null;
@@ -711,7 +734,7 @@
     state.game.remainingMs = 0;
 
     rememberSequence(nextSetup.sequenceHash);
-    enterPhase("preview");
+    enterPhase("preview-ready");
   }
 
   function registerRun(categoryId) {
@@ -1073,8 +1096,16 @@
     const prompt = getPrompt();
     const showTimer = state.game.phase === "ask" && Boolean(state.game.roundConfig.answerTimeLimitMs);
     const remainingSeconds = Math.ceil((state.game.remainingMs || 0) / 1000);
-    const options = state.game.answerOptions[state.game.currentQuestionIndex] || [];
+    const options = unique(
+      getCategoryPool(state.game.categoryId).map(function (entry) {
+        return entry.value;
+      }),
+    );
     const correctAnswer = state.game.sequence[state.game.currentQuestionIndex];
+    const needsConfirmButton =
+      state.game.phase === "preview-ready" || state.game.phase === "reveal-ready";
+    const spotlightVisible =
+      state.game.phase === "reveal" || state.game.phase === "reveal-ready";
 
     return (
       renderSection(
@@ -1106,7 +1137,17 @@
             })
             .join("") +
           "</div>" +
-          '<div class="answer-grid">' +
+          (spotlightVisible
+            ? '<div class="spotlight"><div class="card__eyebrow">Новый смайлик</div><div class="spotlight__emoji">' +
+              state.game.pendingRevealValue +
+              '</div><p class="card__text">Запомните этот символ, затем нажмите «Готов».</p></div>'
+            : "") +
+          (needsConfirmButton
+            ? '<div class="page-actions">' +
+              button("Готов", "primary", { action: "confirm-phase" }) +
+              "</div>"
+            : "") +
+          '<div class="emoji-panel__wrap"><div class="card__eyebrow">Панель смайликов категории</div><div class="emoji-panel">' +
           options
             .map(function (option) {
               const classes = ["option"];
@@ -1127,7 +1168,7 @@
               );
             })
             .join("") +
-          "</div>" +
+          "</div></div>" +
           '<div class="page-actions">' +
           button("Домой", "ghost", { action: "navigate", route: "home" }) +
           button("Начать заново", "secondary", { action: "restart-game" }) +
@@ -1259,18 +1300,16 @@
 
   function renderLaneCell(item, index) {
     const initialPreviewVisible = index < state.game.roundConfig.previewWindow;
-    const isPreview = state.game.phase === "preview" && initialPreviewVisible;
+    const isPreview =
+      (state.game.phase === "preview" || state.game.phase === "preview-ready") &&
+      initialPreviewVisible;
     const isResolved = state.game.resolvedIndexes.includes(index);
-    const isNewReveal = state.game.currentRevealIndex === index && state.game.phase !== "ask";
-    const isVisible = isResolved || isPreview || isNewReveal;
+    const isVisible = isResolved || isPreview;
     const isActiveQuestion = index === state.game.currentQuestionIndex && state.game.phase === "ask";
 
     const classes = ["lane-cell"];
     if (isResolved) {
       classes.push("is-resolved");
-    }
-    if (isNewReveal) {
-      classes.push("is-new");
     }
     if (isActiveQuestion) {
       classes.push("is-active");
@@ -1299,11 +1338,11 @@
         badge: "Показ",
       };
     }
-    if (state.game.phase === "cover") {
+    if (state.game.phase === "preview-ready") {
       return {
-        title: "Элементы закрываются",
-        body: "Сосредоточься на порядке. Вопрос начнётся через мгновение.",
-        badge: "Закрыто",
+        title: "Готовы начать ход?",
+        body: "Нажмите «Готов», и стартовые смайлики закроются. После этого нужно будет угадать первый скрытый смайлик.",
+        badge: "Готов",
       };
     }
     if (state.game.phase === "ask") {
@@ -1316,8 +1355,15 @@
     if (state.game.phase === "answer-correct") {
       return {
         title: "Верно",
-        body: "Шаг подтверждён. Новый элемент справа добавлен для запоминания.",
+        body: "Шаг подтверждён.",
         badge: "Готово",
+      };
+    }
+    if (state.game.phase === "reveal" || state.game.phase === "reveal-ready") {
+      return {
+        title: "Запомни новый смайлик",
+        body: "Новый символ показан в центре. Когда запомните его, нажмите «Готов».",
+        badge: "Новый",
       };
     }
     if (state.game.phase === "answer-wrong") {
