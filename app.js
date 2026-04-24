@@ -9,7 +9,7 @@
     timerTickMs: 100,
   };
 
-  const APP_VERSION = "1.0.1";
+  const APP_VERSION = "1.0.2";
 
   const STORAGE_KEYS = {
     progress: "memory-lane-html-progress",
@@ -739,7 +739,7 @@
     if (isCorrect) {
       state.game.highlightedOption = selectedOption;
       state.game.lastAnswerCorrect = true;
-      state.game.score += 10 + Math.max(0, state.game.streak * 2);
+      state.game.score += 1;
       state.game.streak += 1;
       registerAnswer(true, state.game.streak);
       enterPhase("answer-correct");
@@ -780,7 +780,6 @@
     state.game.revealedCorrectAnswer = null;
 
     if (completed) {
-      state.game.score += 50;
       state.game.blocksCleared += 1;
       enterPhase("level-complete");
       return;
@@ -927,12 +926,10 @@
     app.innerHTML =
       '<div class="shell">' +
       renderTopbar() +
-      '<div class="layout">' +
-      renderSidebar() +
       '<main class="main">' +
       renderRoute() +
       "</main>" +
-      "</div>" +
+      renderBottomNav() +
       "</div>";
   }
 
@@ -946,41 +943,20 @@
       '<div class="brand__title"><span class="gold">MEMORY</span> <span class="violet">LANE</span></div>' +
       "</div>" +
       "</div>" +
-      '<div class="topbar__actions">' +
-      button("Домой", "ghost", { action: "navigate", route: "home" }) +
-      button("Прогресс", "ghost", { action: "navigate", route: "progress" }) +
-      button("Настройки", "ghost", { action: "navigate", route: "settings" }) +
-      "</div>" +
       "</div>"
     );
   }
 
-  function renderSidebar() {
-    const accuracy = state.progress.stats.totalAnswers
-      ? Math.round((state.progress.stats.correctAnswers / state.progress.stats.totalAnswers) * 100)
-      : 0;
-
+  function renderBottomNav() {
     return (
-      '<aside class="sidebar">' +
-      '<div>' +
-      '<div class="card__eyebrow">Навигация</div>' +
-      '<div class="nav">' +
+      '<nav class="bottom-nav">' +
       navButton("Главная", "home") +
       navButton("Режимы", "modes") +
       navButton("Категории", "categories") +
       navButton("Уровни", "levels") +
       navButton("Прогресс", "progress") +
       navButton("Настройки", "settings") +
-      "</div>" +
-      "</div>" +
-      '<div class="cards-3" style="grid-template-columns:1fr;">' +
-      tile("Открыт уровень", String(state.progress.progress.unlockedLevel)) +
-      tile("Рекорд endless", String(state.progress.progress.endlessBestScore)) +
-      tile("Точность", accuracy + "%") +
-      "</div>" +
-      '<div class="sidebar__note">Эта версия работает прямо из <strong>index.html</strong>: можно открыть локально, переслать папку или положить на любой статический хостинг.</div>' +
-      button("Выбрать режим", "primary", { action: "navigate", route: "modes" }) +
-      "</aside>"
+      "</nav>"
     );
   }
 
@@ -1029,30 +1005,8 @@
       '<div class="page-actions">' +
       button("Играть", "primary", { action: "navigate", route: "modes" }) +
       button("Категории", "secondary", { action: "navigate", route: "categories" }) +
-      button("Настройки", "ghost", { action: "navigate", route: "settings" }) +
       "</div>" +
       "</div>" +
-      '<div class="hero__palette">' +
-      '<div class="card"><div class="card__eyebrow">Палитра</div><div class="palette">' +
-      '<div class="swatch swatch--gold"></div>' +
-      '<div class="swatch swatch--lime"></div>' +
-      '<div class="swatch swatch--coral"></div>' +
-      '<div class="swatch swatch--pink"></div>' +
-      '<div class="swatch swatch--violet"></div>' +
-      '<div class="swatch swatch--cyan"></div>' +
-      '</div><p class="tiny">Цвета собраны по мотивам приложенной референс-картинки: тёмный фон, золото, лайм, коралл, фиолет и ледяной голубой.</p></div>' +
-      tile("Открытый уровень", String(state.progress.progress.unlockedLevel)) +
-      tile("Лучший endless", String(state.progress.progress.endlessBestScore)) +
-      tile("Лучшая серия", String(state.progress.stats.bestStreak)) +
-      "</div>" +
-      "</div>" +
-      "</section>" +
-      '<section class="section">' +
-      '<div class="section__header"><div><h2 class="section__title">Быстрый обзор</h2><p class="section__subtitle">Локальная статистика хранится в браузере, так что игра не требует отдельного backend.</p></div></div>' +
-      '<div class="cards-3">' +
-      tile("Пройдено уровней", String(state.progress.progress.completedLevels.length)) +
-      tile("Всего попыток", String(state.progress.stats.totalRuns)) +
-      tile("Ответов", String(state.progress.stats.totalAnswers)) +
       "</div>" +
       "</section>" +
       '<section class="section">' +
@@ -1081,7 +1035,7 @@
         renderModeCard(
           "endless",
           "Бесконечный режим",
-          "Непрерывные блоки, рост сложности, лучший счёт и длинные серии без заранее заданного финала.",
+          "Непрерывные блоки, рост сложности, длинные серии и проход по большим цепочкам смайликов без заранее заданного финала.",
           "На рекорд",
         ) +
         "</div>",
@@ -1141,7 +1095,7 @@
       "Прогресс",
       "Локальная статистика, рекорды и текущая траектория обучения.",
       '<div class="progress-grid">' +
-        tile("Лучший счёт", String(state.progress.progress.endlessBestScore)) +
+        tile("Лучший результат", String(state.progress.progress.endlessBestScore)) +
         tile("Точность", accuracy + "%") +
         tile("Лучшая серия", String(state.progress.stats.bestStreak)) +
         tile("Пройдено уровней", String(state.progress.progress.completedLevels.length)) +
@@ -1253,7 +1207,7 @@
         '<div class="question-badges">' +
           chip("Фаза", prompt.badge) +
           chip("Жизни", repeatHeart(state.game.livesLeft)) +
-          chip("Счёт", String(state.game.score)) +
+          chip("Ходы", String(state.game.score)) +
           chip("Серия", String(state.game.streak)) +
           chip(
             state.game.mode === "levels" ? "Уровень" : "Блок",
@@ -1315,7 +1269,6 @@
             .join("") +
           "</div></div>" +
           '<div class="page-actions">' +
-          button("Домой", "ghost", { action: "navigate", route: "home" }) +
           button("Начать заново", "secondary", { action: "restart-game" }) +
           "</div>" +
           "</div>",
@@ -1348,7 +1301,8 @@
         state.result.score +
         '</div>' +
         '<div class="cards-3">' +
-        tile("Лучший счёт", String(state.result.bestScore)) +
+        tile("Угадано ходов", String(state.result.score)) +
+        tile("Лучший результат", String(state.result.bestScore)) +
         tile("Режим", state.result.mode === "levels" ? "Уровни" : "Endless") +
         tile("Категория", getCategoryDefinition(state.result.categoryId).title) +
         "</div>" +
@@ -1357,8 +1311,6 @@
           ? button("Следующий уровень", "primary", { action: "continue-level" })
           : "") +
         button("Сыграть снова", "primary", { action: "restart-game" }) +
-        button("Домой", "secondary", { action: "navigate", route: "home" }) +
-        button("Прогресс", "ghost", { action: "navigate", route: "progress" }) +
         "</div>" +
         "</div>",
     );
@@ -1760,7 +1712,7 @@
     return (
       '<button data-action="navigate" data-route="' +
       route +
-      '" class="' +
+      '" class="bottom-nav__item ' +
       (state.route === route ? "is-active" : "") +
       '">' +
       label +
