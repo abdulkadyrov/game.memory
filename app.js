@@ -421,6 +421,7 @@
       pendingRevealValue: null,
       resolvedIndexes: [],
       highlightedOption: null,
+      revealedCorrectAnswer: null,
       lastAnswerCorrect: null,
       streak: 0,
       blocksCleared: 0,
@@ -550,6 +551,7 @@
     } else if (phase === "ask") {
       state.game.currentRevealIndex = null;
       state.game.pendingRevealValue = null;
+      state.game.revealedCorrectAnswer = null;
       startQuestionClock();
     } else if (phase === "reveal" || phase === "reveal-ready") {
       // Wait for the player to confirm they memorized the newly revealed emoji.
@@ -693,6 +695,7 @@
       ? state.game.currentQuestionIndex
       : nextQuestionIndex;
     state.game.highlightedOption = null;
+    state.game.revealedCorrectAnswer = null;
 
     if (completed) {
       state.game.score += 50;
@@ -719,13 +722,17 @@
     }
 
     state.game.livesLeft -= 1;
-    state.game.highlightedOption = null;
+    const correctAnswer = state.game.sequence[state.game.currentQuestionIndex];
+    const outOfLives = state.game.livesLeft <= 0;
 
-    if (state.game.livesLeft <= 0) {
+    if (outOfLives) {
+      state.game.revealedCorrectAnswer = correctAnswer;
+      state.game.highlightedOption = correctAnswer;
       enterPhase("game-over");
       return;
     }
 
+    state.game.highlightedOption = null;
     enterPhase("ask");
   }
 
@@ -734,14 +741,17 @@
       return;
     }
 
+    const nextCategoryId = getNextEndlessCategory(state.game.categoryId);
+
     const nextSetup = buildGameSetup({
       mode: "endless",
-      categoryId: state.game.categoryId,
+      categoryId: nextCategoryId,
       recentHashes: state.progress.progress.recentSequenceHashes,
       endlessBlockIndex: state.game.blocksCleared,
     });
 
     state.game.seed = nextSetup.seed;
+    state.game.categoryId = nextCategoryId;
     state.game.roundConfig = nextSetup.roundConfig;
     state.game.sequence = nextSetup.sequence;
     state.game.sequenceHash = nextSetup.sequenceHash;
@@ -753,6 +763,7 @@
     state.game.pendingRevealValue = null;
     state.game.resolvedIndexes = [];
     state.game.highlightedOption = null;
+    state.game.revealedCorrectAnswer = null;
     state.game.lastAnswerCorrect = null;
     state.game.askStartedAt = null;
     state.game.remainingMs = 0;
@@ -1130,6 +1141,12 @@
       state.game.phase === "preview-ready" || state.game.phase === "reveal-ready";
     const spotlightVisible =
       state.game.phase === "reveal" || state.game.phase === "reveal-ready";
+    const gameOverAnswerMarkup =
+      state.game.phase === "game-over" && state.game.revealedCorrectAnswer
+        ? '<div class="answer-reveal"><div class="card__eyebrow">Правильный ответ</div><div class="answer-reveal__emoji">' +
+          state.game.revealedCorrectAnswer +
+          '</div><p class="card__text">Жизни закончились, поэтому показываю верный смайлик для текущей позиции.</p></div>'
+        : "";
 
     return (
       renderSection(
@@ -1166,6 +1183,7 @@
               state.game.pendingRevealValue +
               '</div><p class="card__text">Запомните этот символ, затем нажмите «Готов».</p></div>'
             : "") +
+          gameOverAnswerMarkup +
           (needsConfirmButton
             ? '<div class="page-actions">' +
               button("Готов", "primary", { action: "confirm-phase" }) +
@@ -1177,6 +1195,11 @@
               const classes = ["option"];
               if (state.game.highlightedOption === option) {
                 classes.push(option === correctAnswer ? "is-correct" : "is-wrong");
+              } else if (
+                state.game.phase === "game-over" &&
+                state.game.revealedCorrectAnswer === option
+              ) {
+                classes.push("is-correct");
               }
 
               return (
@@ -1338,6 +1361,10 @@
     const isResolved = state.game.resolvedIndexes.includes(index);
     const isVisible = isResolved || isPreview;
     const isActiveQuestion = index === state.game.currentQuestionIndex && state.game.phase === "ask";
+    const isFailedAnswer =
+      index === state.game.currentQuestionIndex &&
+      state.game.phase === "game-over" &&
+      state.game.revealedCorrectAnswer;
 
     const classes = ["lane-cell"];
     if (isResolved) {
@@ -1346,12 +1373,15 @@
     if (isActiveQuestion) {
       classes.push("is-active");
     }
+    if (isFailedAnswer) {
+      classes.push("is-failed");
+    }
 
     return (
       '<div class="' +
       classes.join(" ") +
       '">' +
-      (isVisible
+      (isVisible || isFailedAnswer
         ? '<div class="lane-cell__emoji">' + item + "</div>"
         : '<div class="lane-cell__cover">?</div>') +
       "</div>"
@@ -1415,9 +1445,30 @@
 
     return {
       title: "Забег завершён",
-      body: "Попробуйте ещё раз и побейте свой прошлый рекорд.",
+      body: state.game.revealedCorrectAnswer
+        ? "Жизни закончились. Верный ответ для текущего шага показан ниже."
+        : "Попробуйте ещё раз и побейте свой прошлый рекорд.",
       badge: "Финиш",
     };
+  }
+
+  function getNextEndlessCategory(currentCategoryId) {
+    const endlessCategories = CATEGORY_DEFINITIONS.filter(function (category) {
+      return category.id !== "mixed";
+    }).map(function (category) {
+      return category.id;
+    });
+
+    if (currentCategoryId === "mixed") {
+      return endlessCategories[0];
+    }
+
+    const currentIndex = endlessCategories.indexOf(currentCategoryId);
+    if (currentIndex === -1) {
+      return endlessCategories[0];
+    }
+
+    return endlessCategories[(currentIndex + 1) % endlessCategories.length];
   }
 
   function getCategoryDefinition(categoryId) {
