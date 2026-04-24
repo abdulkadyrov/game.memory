@@ -631,6 +631,12 @@ body::after {
   border-radius: 999px;
 }
 
+.lane__track--slide {
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation-fill-mode: both;
+}
+
 .lane-cell {
   flex: 0 0 78px;
   min-height: 92px;
@@ -836,6 +842,30 @@ body::after {
   100% {
     transform: scale(0.94);
     opacity: 0.82;
+  }
+}
+
+@keyframes laneSlideA {
+  from {
+    opacity: 0.7;
+    transform: translateX(26px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes laneSlideB {
+  from {
+    opacity: 0.7;
+    transform: translateX(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 

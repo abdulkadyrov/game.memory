@@ -423,6 +423,7 @@
       currentQuestionIndex: 0,
       currentRevealIndex: null,
       pendingRevealValue: null,
+      laneMotionToken: 0,
       resolvedIndexes: [],
       highlightedOption: null,
       revealedCorrectAnswer: null,
@@ -770,6 +771,7 @@
     state.game.currentQuestionIndex = completed
       ? state.game.currentQuestionIndex
       : nextQuestionIndex;
+    state.game.laneMotionToken += 1;
     state.game.highlightedOption = null;
     state.game.revealedCorrectAnswer = null;
 
@@ -837,6 +839,7 @@
     state.game.currentQuestionIndex = 0;
     state.game.currentRevealIndex = null;
     state.game.pendingRevealValue = null;
+    state.game.laneMotionToken = 0;
     state.game.resolvedIndexes = [];
     state.game.highlightedOption = null;
     state.game.revealedCorrectAnswer = null;
@@ -1224,6 +1227,14 @@
       state.game.phase === "preview-ready" || state.game.phase === "reveal-ready";
     const spotlightVisible =
       state.game.phase === "reveal" || state.game.phase === "reveal-ready";
+    const laneTrackClass =
+      state.game.mode === "endless" ? "lane__track lane__track--slide" : "lane__track";
+    const laneTrackAnimation =
+      state.game.mode === "endless"
+        ? ' style="animation-name:' +
+          (state.game.laneMotionToken % 2 === 0 ? "laneSlideA" : "laneSlideB") +
+          ';"'
+        : "";
     const gameOverAnswerMarkup =
       state.game.phase === "game-over" && state.game.revealedCorrectAnswer
         ? '<div class="answer-reveal"><div class="card__eyebrow">Правильный ответ</div><div class="answer-reveal__emoji">' +
@@ -1254,7 +1265,7 @@
           '</h3></div><div class="tiny">' +
           getCategoryDefinition(currentQuestionCategoryId).title +
           "</div></div>" +
-          '<div class="lane__track">' +
+          '<div class="' + laneTrackClass + '"' + laneTrackAnimation + ">" +
           getLaneWindowEntries()
             .map(function (item, index) {
               return renderLaneCell(item.value, item.index);
