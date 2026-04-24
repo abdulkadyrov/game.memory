@@ -9,7 +9,7 @@
     timerTickMs: 100,
   };
 
-  const APP_VERSION = "1.0.2";
+  const APP_VERSION = "1.0.3";
 
   const STORAGE_KEYS = {
     progress: "memory-lane-html-progress",
@@ -949,14 +949,19 @@
 
   function renderBottomNav() {
     return (
+      '<div class="bottom-nav-wrap">' +
+      '<div class="bottom-nav__title">' +
+      getRouteLabel(state.route) +
+      "</div>" +
       '<nav class="bottom-nav">' +
-      navButton("Главная", "home") +
-      navButton("Режимы", "modes") +
-      navButton("Категории", "categories") +
-      navButton("Уровни", "levels") +
-      navButton("Прогресс", "progress") +
-      navButton("Настройки", "settings") +
-      "</nav>"
+      navButton("🏠", "Главная", "home") +
+      navButton("🎮", "Режимы", "modes") +
+      navButton("🗂️", "Категории", "categories") +
+      navButton("🪜", "Уровни", "levels") +
+      navButton("📈", "Прогресс", "progress") +
+      navButton("⚙️", "Настройки", "settings") +
+      "</nav>" +
+      "</div>"
     );
   }
 
@@ -1708,16 +1713,42 @@
     return '<button class="btn btn--' + variant + '" ' + attrs + ">" + label + "</button>";
   }
 
-  function navButton(label, route) {
+  function navButton(icon, label, route) {
     return (
       '<button data-action="navigate" data-route="' +
       route +
       '" class="bottom-nav__item ' +
       (state.route === route ? "is-active" : "") +
       '">' +
+      '<span class="bottom-nav__icon">' +
+      icon +
+      '</span><span class="bottom-nav__label">' +
       label +
+      "</span>" +
       "</button>"
     );
+  }
+
+  function getRouteLabel(route) {
+    switch (route) {
+      case "modes":
+        return "Режимы";
+      case "categories":
+        return "Категории";
+      case "levels":
+        return "Уровни";
+      case "progress":
+        return "Прогресс";
+      case "settings":
+        return "Настройки";
+      case "game":
+        return "Игра";
+      case "result":
+        return "Результат";
+      case "home":
+      default:
+        return "Главная";
+    }
   }
 
   function tile(label, value) {
