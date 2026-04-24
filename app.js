@@ -469,11 +469,11 @@
 
     const block = endlessBlockIndex + 1;
     return {
-      sequenceLength: Math.min(4 + Math.floor(block / 2), 10),
-      previewWindow: Math.min(3 + Math.floor(block / 4), 5),
+      sequenceLength: 10,
+      previewWindow: 3,
       optionCount: block < 3 ? 4 : block < 7 ? 6 : 8,
-      previewDurationMs: Math.max(2400 - block * 70, 1100),
-      newItemRevealMs: Math.max(1250 - block * 30, 650),
+      previewDurationMs: 2200,
+      newItemRevealMs: 1050,
       answerTimeLimitMs: block >= 4 ? Math.max(7000 - block * 180, 3600) : undefined,
       similarityTier: block < 4 ? 1 : block < 8 ? 2 : 3,
       lives: APP_CONFIG.defaultLives,
