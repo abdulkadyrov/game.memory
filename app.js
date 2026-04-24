@@ -9,7 +9,7 @@
     timerTickMs: 100,
   };
 
-  const APP_VERSION = buildAppVersion();
+  const APP_VERSION = "1.0.1";
 
   const STORAGE_KEYS = {
     progress: "memory-lane-html-progress",
@@ -399,7 +399,11 @@
       endlessBlockIndex: 0,
     });
 
-    if (!setup.sequence.length || !setup.answerOptions.length) {
+    const invalidSetup =
+      !setup.sequence.length ||
+      (mode !== "endless" && !setup.answerOptions.length);
+
+    if (invalidSetup) {
       window.alert("Не удалось запустить игру. Попробуйте выбрать режим и категорию заново.");
       navigate("home");
       return;
@@ -1192,7 +1196,7 @@
           "preferDarkTheme",
           state.settings.preferDarkTheme,
         ) +
-        '<div class="setting-row"><div><h3 class="card__title" style="font-size:20px;">Версия приложения</h3><p class="card__text">Обновляется по дате последнего изменения файлов приложения.</p></div><div class="toggle"><strong>' +
+        '<div class="setting-row"><div><h3 class="card__title" style="font-size:20px;">Версия приложения</h3><p class="card__text">Обновляется вручную после каждого изменения приложения.</p></div><div class="toggle"><strong>' +
         APP_VERSION +
         "</strong></div></div>" +
         '</div></div><div class="page-actions">' +
@@ -1651,16 +1655,6 @@
     });
 
     return found ? found.id : "mixed";
-  }
-
-  function buildAppVersion() {
-    const stamp = new Date(document.lastModified || Date.now());
-    const yyyy = String(stamp.getUTCFullYear());
-    const mm = String(stamp.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(stamp.getUTCDate()).padStart(2, "0");
-    const hh = String(stamp.getUTCHours()).padStart(2, "0");
-    const min = String(stamp.getUTCMinutes()).padStart(2, "0");
-    return "web-" + yyyy + "." + mm + "." + dd + "-" + hh + min;
   }
 
   function getCategoryDefinition(categoryId) {
